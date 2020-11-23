@@ -86,12 +86,10 @@ def riem_solver_c(
         dm = dm * 1. / GRAV
         w2 = w3
 
-    # sim1_solver {
-    # should only enter this if a_imp > 0.5, but a_imp = 1 in the test code
-    # we are addressing this limitation...
+    # SIM1_solver {
     # Line 232
     with computation(PARALLEL), interval(0, -1):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             if __INLINED(MOIST_CAPPA):
                 fac = gm2
             else:
@@ -102,7 +100,7 @@ def riem_solver_c(
 
     # Line 245
     with computation(PARALLEL), interval(1, -2):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             g_rat = dm[0, 0, 0] / dm[0, 0, 1]
             bb = 2. * (1. + g_rat)
             dd = 3. * (pe + g_rat) * pe[0, 0, 1]
@@ -111,36 +109,36 @@ def riem_solver_c(
         #     dd = 3.0 * pe
 
     # Line 255
-    with computation(PARALLEL):
+    with computation(FORWARD):
         # Set special conditions on pp, bb, dd
         with interval(0, 1):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 pp = 0
         with interval(1, 2):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 pp = dd[0, 0, -1] / bb[0, 0, -1]
         with interval(-2, -1):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 bb = 2.
                 dd = 3 * pe
 
-    with computation(FORWARD), interval(2, 1):
-        if __INLINED(A_IMP < 0.5):
+    with computation(FORWARD), interval(2, 3):
+        if __INLINED(A_IMP > 0.5):
             bet = bb[0, 0, -1]
 
     # Line 265
     with computation(PARALLEL), interval(2, -1):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             gam = g_rat[0, 0, -1] / bet[0, 0, 0]
             bet = bb - gam
 
     with computation(PARALLEL), interval(3, None):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             pp = (dd[0, 0, 0] - pp[0, 0, 0]) / bet[0, 0, -1]
 
     # Line 275
     with computation(BACKWARD), interval(1, -1):  # this may need to be -2
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             pp = pp - gam * pp[0, 0, 1]
 
             aa = (pem[0, 0, 0] + pp[0, 0, 0]) / (dz2[0, 0, -1] + dz2[0, 0, 0])
@@ -153,20 +151,20 @@ def riem_solver_c(
 
     # Line 295
     with computation(PARALLEL), interval(1, 2):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             bet = dm[0, 0, 0] - aa[0, 0, 1]
             w2 = (dm[0, 0, 0] * w1[0, 0, 0] + dt * pp[0, 0, 1]) / bet
 
     # Line 302
     with computation(FORWARD), interval(2, -2):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             gam = aa / bet
             bet = dm - (aa * (gam + 1) + aa[0, 0, 1])
             w2 = (dm * w1 + dt * (pp[0, 0, 1] - pp[0, 0, 0]) - aa * w2[0, 0, -1]) / bet
 
     # Line 312
     with computation(FORWARD), interval(-2, -1):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             t1g = calc_t1g(dt, gam)
             if __INLINED(MOIST_CAPPA):
                 p1 = t1g * gm2 / dz2 * (pem[0, 0, 1] + pp[0, 0, 1])
@@ -179,28 +177,28 @@ def riem_solver_c(
 
     # Line 325
     with computation(BACKWARD), interval(0, -2):
-        if __INLINED(A_IMP < 0.5):
+        if __INLINED(A_IMP > 0.5):
             w2 -= gam[0, 0, 1] * w2[0, 0, 1]
 
-    # Line 338
+    # Line 332
     with computation(FORWARD):
-        with interval(0, 1):
-            if __INLINED(A_IMP < 0.5):
+        with interval(0, 2):
+            if __INLINED(A_IMP > 0.5):
                 pe = 0.
         with interval(2, -1):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 rdt = 1. / dt
                 pe = pe[0, 0, -1] + dm * (w2 - w1) * rdt
 
     # Line 346
     with computation(BACKWARD):
         with interval(-2, -1):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 r3 = 1. / 3.
                 p1 = (pe + 2. * pe[0, 0, 1]) * r3
                 dz2 = calc_dz2(dm, pt, cp2, akap, p_fac, pm2, p1)
         with interval(0, -2):
-            if __INLINED(A_IMP < 0.5):
+            if __INLINED(A_IMP > 0.5):
                 r3 = 1. / 3.
                 p1 = (pe + bb * pe[0, 0, 1] + g_rat * pe[0, 0, 2]) * r3 - g_rat * p1
                 dz2 = calc_dz2(dm, pt, cp2, akap, p_fac, pm2, p1)

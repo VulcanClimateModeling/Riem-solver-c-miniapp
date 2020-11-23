@@ -45,7 +45,7 @@ class Dataset:
             else:
                 origin = (0,)
             return gt_storage.from_array(
-                ndarray, GT4PY_BACKEND, default_origin=origin, shape=ndarray.shape)
+                ndarray, backend, default_origin=origin, shape=ndarray.shape)
         else:
             return var[0].item()
 
