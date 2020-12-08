@@ -75,11 +75,6 @@ class Dataset:
             backend=self._backend, default_origin=origin, shape=shape, dtype=dtype,
             mask=mask)
 
-def deserialize_args(names: List[str]) -> List[gt4py.Storage]:
-    return {name: data[name] for name in names}
-
-def deserialize_dict_args(dict_names):
-    return {name: data[name] for name in names}
 
 def do_test(data_file, backend):
     data = Dataset(data_file, backend)
@@ -87,19 +82,21 @@ def do_test(data_file, backend):
     # other fields
     pe = data.new(IJK, float, pad_k=True)
 
-    field_arg_names = ("cappa", "hs", "w3", "pt", "q_con", "delp", "gz", "pef", "ws", "pe")
+    field_arg_names = ("cappa", "hs", "w3", "pt", "q_con",
+                       "delp", "gz", "pef", "ws", "pe")
     scalar_arg_names = ("p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
     compile_time_args = {"A_IMP": "a_imp"}
 
-    field_args = deserialize_args(field_arg_names)
-    scalar_args = deserialize_args(scalar_arg_names)
+    field_args = {name: data[name] for name in field_arg_names}
+    scalar_args = {name: data[name] for name in scalar_arg_names}
 
     riem = stencil(backend=backend, definition=riem_solver_c,
-                   externals={k:data[v] for k, v in compile_time_args.items()})
+                   externals={k: data[v] for k, v in compile_time_args.items()})
 
     kwargs = ChainMap(field_args, scalar_args)
 
     riem(**kwargs)
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
