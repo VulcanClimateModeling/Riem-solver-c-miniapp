@@ -1,11 +1,11 @@
 import sys
 from collections.abc import Iterable
-from collections import ChainMap
+from typing import Dict, List, Tuple
 
 import gt4py
 import netCDF4 as nc
 import numpy as np
-from gt4py.gtscript import I, J, K, IJ, IJK, Field, stencil
+from gt4py.gtscript import IJ, IJK, Field, I, J, K, stencil
 
 from riem_solver_c import riem_solver_c
 
@@ -55,7 +55,8 @@ class Dataset:
         variable = self._dataset[index]
         return self.netcdf_to_gt4py(variable)
 
-    def new(self, axes: Tuple[gt4py.gtscript._Axis], dtype, pad_k=False):
+    def new(self, axes: Tuple[gt4py.gtscript._Axis],
+            dtype, pad_k=False) -> gt4py.storage.Storage:
         k_add = 1 if pad_k else 0
         if axes == IJK:
             origin = (self.ng, self.ng, 0)
@@ -79,23 +80,33 @@ class Dataset:
 def do_test(data_file, backend):
     data = Dataset(data_file, backend)
 
-    # other fields
+    # Deserialize fields
+    field_arg_names = ("hs", "w3", "pt",
+                       "delp", "gz", "pef", "ws")
+    field_args = {name: data[name] for name in field_arg_names}
+
+    # q_con is stored as a scalar, but is actually a 1D field
+    q_con = data.new(K, float, pad_k=True)
+    q_con = data["q_con"]
+
+    # pe should be a temporary, but needs to be a field argument for now.
     pe = data.new(IJK, float, pad_k=True)
 
-    field_arg_names = ("cappa", "hs", "w3", "pt", "q_con",
-                       "delp", "gz", "pef", "ws", "pe")
-    scalar_arg_names = ("p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
-    compile_time_args = {"A_IMP": "a_imp"}
-
-    field_args = {name: data[name] for name in field_arg_names}
+    # Deserialize scalars
+    scalar_arg_names = ("cappa", "p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
     scalar_args = {name: data[name] for name in scalar_arg_names}
 
+    # Deserialize compile-time constants
+    compile_time_args_names = {"A_IMP": "a_imp"}
+    compile_time_args = {k: data[v] for k, v in compile_time_args_names.items()}
+
+    for k, v in field_args.items():
+        assert hasattr(v, "shape"), f"{k} does not have a 'shape' attribute"
+
     riem = stencil(backend=backend, definition=riem_solver_c,
-                   externals={k: data[v] for k, v in compile_time_args.items()})
+                   externals=compile_time_args)
 
-    kwargs = ChainMap(field_args, scalar_args)
-
-    riem(**kwargs)
+    riem(pe=pe, q_con=q_con, **field_args, **scalar_args)
 
 
 if __name__ == "__main__":

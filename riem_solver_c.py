@@ -28,10 +28,10 @@ def calc_dz2(dm2, pt, cp2, akap, p_fac, pm2, p1):
 
 
 def riem_solver_c(
-        cappa: Field[float, IJK], hs: Field[float, IJ], w3: Field[float, IJK],
+        hs: Field[float, IJ], w3: Field[float, IJK],
         pt: Field[float, IJK], q_con: Field[float, IJK], delp: Field[float, IJK],
         gz: Field[float, IJK], pef: Field[float, IJK], ws: Field[float, IJK],
-        pe: Field[float, IJK], p_fac: float, scale_m: float, ms: int, dt: float,
+        pe: Field[float, IJK], cappa: float, p_fac: float, scale_m: float, ms: int, dt: float,
         akap: float, cp: float, ptop: float):
     """
     C-grid Riemann solver.
