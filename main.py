@@ -1,19 +1,21 @@
 import sys
 from collections.abc import Iterable
+from collections import ChainMap
 
 import gt4py
-import gt4py.storage as gt_storage
 import netCDF4 as nc
 import numpy as np
 from gt4py.gtscript import I, J, K, IJ, IJK, Field, stencil
 
 from riem_solver_c import riem_solver_c
 
-def iterable(obj):
+
+def iterable(obj) -> bool:
     return isinstance(obj, Iterable)
 
+
 class Dataset:
-    def __init__(self, file_name, backend):
+    def __init__(self, file_name: str, backend: str):
         self._dataset = nc.Dataset(file_name)
         self._backend = backend
         self.npx = int(self._dataset["npx"][0].item())
@@ -22,10 +24,10 @@ class Dataset:
         self.km = int(self._dataset["km"][0].item())
 
     @staticmethod
-    def _find_fuzzy(axes, name):
+    def _find_fuzzy(axes: List[str], name: str) -> int:
         return next(i for i, axis in enumerate(axes) if axis.startswith(name))
 
-    def netcdf_to_gt4py(self, var):
+    def netcdf_to_gt4py(self, var: str) -> gt4py.storage.Storage:
         """Convert a netcdf variable to gt4py storage."""
         axes = [d.name for d in var.get_dims()]
         idim = self._find_fuzzy(axes, "xaxis")
@@ -44,16 +46,16 @@ class Dataset:
                 origin = (self.ng, self.ng)
             else:
                 origin = (0,)
-            return gt_storage.from_array(
+            return gt4py.storage.from_array(
                 ndarray, backend, default_origin=origin, shape=ndarray.shape)
         else:
             return var[0].item()
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: str) -> gt4py.storage.Storage:
         variable = self._dataset[index]
         return self.netcdf_to_gt4py(variable)
 
-    def new(self, axes, dtype, pad_k=False):
+    def new(self, axes: Tuple[gt4py.gtscript._Axis], dtype, pad_k=False):
         k_add = 1 if pad_k else 0
         if axes == IJK:
             origin = (self.ng, self.ng, 0)
@@ -69,8 +71,15 @@ class Dataset:
             shape = (self.km + k_add, )
         else:
             raise ValueError("Axes unrecognized")
-        return gt_storage.empty(backend=self._backend, default_origin=origin, shape=shape, dtype=dtype, mask=mask)
+        return gt4py.storage.empty(
+            backend=self._backend, default_origin=origin, shape=shape, dtype=dtype,
+            mask=mask)
 
+def deserialize_args(names: List[str]) -> List[gt4py.Storage]:
+    return {name: data[name] for name in names}
+
+def deserialize_dict_args(dict_names):
+    return {name: data[name] for name in names}
 
 def do_test(data_file, backend):
     data = Dataset(data_file, backend)
@@ -78,26 +87,19 @@ def do_test(data_file, backend):
     # other fields
     pe = data.new(IJK, float, pad_k=True)
 
-    riem = stencil(backend=backend, definition=riem_solver_c, externals={"A_IMP": data["a_imp"]})
+    field_arg_names = ("cappa", "hs", "w3", "pt", "q_con", "delp", "gz", "pef", "ws", "pe")
+    scalar_arg_names = ("p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
+    compile_time_args = {"A_IMP": "a_imp"}
 
-    riem(data["ms"],
-          data["dt"],
-          data["akap"],
-          data["cappa"],
-          data["cp"],
-          data["ptop"],
-          data["hs"],
-          data["w3"],
-          data["pt"],
-          data["q_con"],
-          data["delp"],
-          data["gz"],
-          data["pef"],
-          data["ws"],
-          data["p_fac"],
-          data["scale_m"],
-          pe)
+    field_args = deserialize_args(field_arg_names)
+    scalar_args = deserialize_args(scalar_arg_names)
 
+    riem = stencil(backend=backend, definition=riem_solver_c,
+                   externals={k:data[v] for k, v in compile_time_args.items()})
+
+    kwargs = ChainMap(field_args, scalar_args)
+
+    riem(**kwargs)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
