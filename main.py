@@ -42,12 +42,15 @@ class Dataset:
             ndarray = np.squeeze(np.transpose(var, permutation))
             if len(ndarray.shape) == 3:
                 origin = (self.ng, self.ng, 0)
+                mask = (True, True, True)
             elif len(ndarray.shape) == 2:
                 origin = (self.ng, self.ng)
+                mask = (True, True, False)
             else:
                 origin = (0,)
+                mask = (False, False, True)
             return gt4py.storage.from_array(
-                ndarray, backend, default_origin=origin, shape=ndarray.shape)
+                ndarray, backend, default_origin=origin, shape=ndarray.shape, mask=mask)
         else:
             return var[0].item()
 
@@ -85,15 +88,21 @@ def do_test(data_file, backend):
                        "delp", "gz", "pef", "ws")
     field_args = {name: data[name] for name in field_arg_names}
 
-    # q_con is stored as a scalar, but is actually a 1D field
-    q_con = data.new(K, float, pad_k=True)
-    q_con = data["q_con"]
+    # q_con is stored as a scalar, but is actually a 3D field.
+    q_con = data.new(IJK, float, pad_k=True)
+    q_con[:] = data["q_con"]
 
-    # pe should be a temporary, but needs to be a field argument for now.
+    # cappa is stored as a scalar, but is actually a 3D field.
+    cappa = data.new(IJK, float, pad_k=True)
+    cappa[:] = data["cappa"]
+
+    # pe is a temporary, but needs to be a field argument for now.
     pe = data.new(IJK, float, pad_k=True)
 
+    field_args.update({"q_con": q_con, "cappa": cappa, "pe": pe})
+
     # Deserialize scalars
-    scalar_arg_names = ("cappa", "p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
+    scalar_arg_names = ("p_fac", "scale_m", "ms", "dt", "akap", "cp", "ptop")
     scalar_args = {name: data[name] for name in scalar_arg_names}
 
     # Deserialize compile-time constants
@@ -102,15 +111,16 @@ def do_test(data_file, backend):
 
     for k, v in field_args.items():
         assert hasattr(v, "shape"), f"{k} does not have a 'shape' attribute"
+        print(f"{k} is a {len(v.shape)}-d storage")
 
     riem = stencil(backend=backend, definition=riem_solver_c,
                    externals=compile_time_args)
 
-    riem(pe=pe, q_con=q_con, **field_args, **scalar_args)
+    riem(**field_args, **scalar_args)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 1 or len(sys.argv) > 3:
         raise ValueError("Usage: main.py path/to/dataset.nc [backend]")
     file_name = sys.argv[1]
     if len(sys.argv) > 2:
